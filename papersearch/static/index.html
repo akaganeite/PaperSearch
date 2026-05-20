@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PaperSearch</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">PS</div>
+          <div>
+            <h1>PaperSearch</h1>
+            <p>Daily software security radar</p>
+          </div>
+        </div>
+
+        <nav class="nav-group" aria-label="Status filters">
+          <button class="nav-item active" data-status="">All</button>
+          <button class="nav-item" data-status="unread">Unread</button>
+          <button class="nav-item" data-status="saved">Saved</button>
+          <button class="nav-item" data-status="deleted">Deleted</button>
+        </nav>
+
+        <div class="sidebar-section">
+          <h2>Sources</h2>
+          <div id="sourceFilters" class="filter-stack"></div>
+        </div>
+
+        <div class="sidebar-section">
+          <h2>Tasks</h2>
+          <div id="taskFilters" class="filter-stack"></div>
+        </div>
+
+        <div class="sidebar-section">
+          <h2>Targets</h2>
+          <div id="targetFilters" class="filter-stack"></div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div class="search-box">
+            <span class="search-icon">⌕</span>
+            <input id="searchInput" type="search" placeholder="Search title, abstract, venue" />
+          </div>
+          <div class="toolbar">
+            <button id="refreshButton" class="icon-button" title="Refresh list">↻</button>
+            <button id="summaryButton" class="secondary-button">立即更新摘要</button>
+            <button id="updateButton" class="primary-button">Run update</button>
+          </div>
+        </header>
+
+        <section class="metrics" id="metrics"></section>
+
+        <section class="content-grid">
+          <div class="paper-column">
+            <div class="section-heading">
+              <div>
+                <h2>Recommended Papers</h2>
+                <p id="resultCount">0 papers</p>
+              </div>
+              <div class="heading-controls">
+                <select id="sortSelect" aria-label="Sort papers">
+                  <option value="relevance" selected>Relevance</option>
+                  <option value="added_desc">Added newest</option>
+                  <option value="added_asc">Added oldest</option>
+                  <option value="published_desc">Published newest</option>
+                  <option value="published_asc">Published oldest</option>
+                </select>
+                <select id="limitSelect" aria-label="Result limit">
+                  <option value="100">100</option>
+                  <option value="200" selected>200</option>
+                  <option value="500">500</option>
+                </select>
+              </div>
+            </div>
+            <div id="paperList" class="paper-list"></div>
+          </div>
+
+          <aside class="activity-panel">
+            <div class="section-heading compact">
+              <div>
+                <h2>Activity</h2>
+                <p id="updateState">Idle</p>
+              </div>
+            </div>
+            <div id="summaryState" class="summary-status">Summaries idle</div>
+            <div id="lastSummary" class="summary-box"></div>
+            <div id="runLogs" class="run-logs"></div>
+          </aside>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

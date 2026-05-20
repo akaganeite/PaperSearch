@@ -1,0 +1,17 @@
+.DS_Store
+*.py[cod]
+__pycache__/
+.pycache/
+.pytest_cache/
+
+.env
+*.log
+nohup.out
+
+data/*.sqlite
+data/*.sqlite-*
+configs/local.json
+configs/interests.json
+
+pets/
+scripts/create_xiaobei_pet.py

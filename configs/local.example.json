@@ -1,0 +1,12 @@
+{
+  "profile_path": "profiles/software_security_llm_agent.sample.json",
+  "pdf_resolver": {
+    "unpaywall_email": "your-email@example.com"
+  },
+  "llm_summary": {
+    "api_key_env": "DEEPSEEK_API_KEY"
+  },
+  "storage": {
+    "database_path": "data/papersearch.sqlite"
+  }
+}

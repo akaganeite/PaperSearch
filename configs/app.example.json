@@ -1,0 +1,151 @@
+{
+  "profile_path": "profiles/software_security_llm_agent.sample.json",
+  "bootstrap": {
+    "arxiv_days": 30,
+    "arxiv_max_results": 200,
+    "cspapers_year_from": 2024,
+    "cspapers_year_to": 2026,
+    "cspapers_pages_per_query": 3,
+    "cspapers_max_abstract_fetch": 80
+  },
+  "scheduler": {
+    "daily_update_local_time": "08:30",
+    "overlap_days": 3
+  },
+  "venue_preprints": {
+    "enabled": true,
+    "source_label": "VenuePreprints",
+    "years": [
+      2025,
+      2026
+    ],
+    "request_delay_seconds": 0,
+    "timeout_seconds": 5,
+    "max_workers": 8,
+    "max_url_attempts_per_venue_year": 3,
+    "venues": [
+      {
+        "venue": "SP",
+        "url_templates": [
+          "https://sp{year}.ieee-security.org/accepted-papers.html",
+          "https://sp{year}.ieee-security.org/program.html",
+          "https://sp{year}.ieee-security.org/program-papers.html"
+        ]
+      },
+      {
+        "venue": "USENIX Security",
+        "url_templates": [
+          "https://www.usenix.org/conference/usenixsecurity{yy}/cycle1-accepted-papers",
+          "https://www.usenix.org/conference/usenixsecurity{yy}/cycle2-accepted-papers",
+          "https://www.usenix.org/conference/usenixsecurity{yy}/cycle3-accepted-papers",
+          "https://www.usenix.org/conference/usenixsecurity{yy}/cycle4-accepted-papers",
+          "https://www.usenix.org/conference/usenixsecurity{yy}/technical-sessions"
+        ]
+      },
+      {
+        "venue": "CCS",
+        "url_templates": [
+          "https://www.sigsac.org/ccs/CCS{year}/accepted-papers/",
+          "https://www.sigsac.org/ccs/CCS{year}/program/"
+        ]
+      },
+      {
+        "venue": "NDSS",
+        "url_templates": [
+          "https://www.ndss-symposium.org/ndss{year}/accepted-papers/",
+          "https://www.ndss-symposium.org/ndss{year}/program/"
+        ]
+      },
+      {
+        "venue": "ICSE",
+        "url_templates": [
+          "https://conf.researchr.org/track/icse-{year}/icse-{year}-research-track",
+          "https://conf.researchr.org/track/icse-{year}/icse-{year}-technical-track",
+          "https://conf.researchr.org/track/icse-{year}/icse-{year}-research-papers"
+        ]
+      },
+      {
+        "venue": "FSE",
+        "url_templates": [
+          "https://conf.researchr.org/track/fse-{year}/fse-{year}-research-papers",
+          "https://conf.researchr.org/track/fse-{year}/fse-{year}-research-track",
+          "https://conf.researchr.org/track/fse-{year}/fse-{year}-technical-papers"
+        ]
+      },
+      {
+        "venue": "ASE",
+        "url_templates": [
+          "https://conf.researchr.org/track/ase-{year}/ase-{year}-research-papers",
+          "https://conf.researchr.org/track/ase-{year}/ase-{year}-research-track",
+          "https://conf.researchr.org/track/ase-{year}/ase-{year}-technical-papers"
+        ]
+      },
+      {
+        "venue": "ISSTA",
+        "url_templates": [
+          "https://conf.researchr.org/track/issta-{year}/issta-{year}-research-papers",
+          "https://conf.researchr.org/track/issta-{year}/issta-{year}-technical-papers",
+          "https://conf.researchr.org/track/issta-{year}/issta-{year}-papers"
+        ]
+      },
+      {
+        "venue": "ASPLOS",
+        "url_templates": [
+          "https://www.asplos-conference.org/asplos{year}/program/",
+          "https://www.asplos-conference.org/asplos{year}/accepted-papers/",
+          "https://www.asplos-conference.org/asplos{year}/program.html"
+        ]
+      },
+      {
+        "venue": "OSDI",
+        "url_templates": [
+          "https://www.usenix.org/conference/osdi{yy}/accepted-papers",
+          "https://www.usenix.org/conference/osdi{yy}/technical-sessions",
+          "https://www.usenix.org/conference/osdi{yy}/program"
+        ]
+      },
+      {
+        "venue": "SOSP",
+        "url_templates": [
+          "https://sigops.org/s/conferences/sosp/{year}/accepted.html",
+          "https://sigops.org/s/conferences/sosp/{year}/program.html",
+          "https://sosp{year}.sigops.org/accepted-papers.html",
+          "https://sosp{year}.sigops.org/program.html"
+        ]
+      },
+      {
+        "venue": "ATC",
+        "url_templates": [
+          "https://sigops.org/s/conferences/atc/{year}/accepted.html",
+          "https://sigops.org/s/conferences/atc/{year}/program.html",
+          "https://www.usenix.org/conference/atc{yy}/accepted-papers",
+          "https://www.usenix.org/conference/atc{yy}/technical-sessions",
+          "https://www.usenix.org/conference/atc{yy}/program"
+        ]
+      }
+    ]
+  },
+  "pdf_resolver": {
+    "enabled": true,
+    "run_after_update_limit": 10,
+    "backfill_limit": 100,
+    "request_delay_seconds": 0.5,
+    "unpaywall_email": "you@example.com"
+  },
+  "llm_summary": {
+    "enabled": true,
+    "provider": "deepseek",
+    "model": "deepseek-v4-flash",
+    "base_url": "https://api.deepseek.com",
+    "api_key_env": "DEEPSEEK_API_KEY",
+    "run_after_update": true,
+    "max_per_update": 10,
+    "thinking": false,
+    "temperature": 0.2,
+    "max_tokens": 900,
+    "timeout_seconds": 60
+  },
+  "storage": {
+    "database_path": "data/papersearch.sqlite"
+  }
+}

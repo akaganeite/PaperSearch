@@ -1,0 +1,377 @@
+{
+  "summary_profile": {
+    "role": "你是一个面向软件安全研究者的论文摘要助手。",
+    "output_language": "中文",
+    "style": "务实、具体，避免空话。",
+    "limited_metadata_instruction": "若只有标题/会议页面上下文而没有摘要，必须明确基于有限元数据判断，不要编造方法细节。",
+    "focus": "LLM/Agent 在软件安全任务中的应用、root cause analysis、static analysis、patch generation/correctness/validation、自动修复、漏洞定位、漏洞挖掘。"
+  },
+  "interests": [
+    {
+      "id": "software_security_llm_agent_applications",
+      "name": "LLM/Agent Applications in Software Security",
+      "description": "Papers about applying LLMs, agents, or AI-assisted systems to software security tasks, including vulnerability discovery, automated repair, root cause analysis, static analysis, patch generation, patch correctness, bug localization, and vulnerability localization. The focus is on software security applications, not on studying, training, or improving LLMs themselves.",
+      "priority_topics": [
+        "vulnerability discovery",
+        "vulnerability detection",
+        "bug finding",
+        "defect detection",
+        "automated program repair",
+        "automated repair",
+        "program repair",
+        "root cause analysis",
+        "root cause",
+        "static analysis",
+        "program analysis",
+        "patch generation",
+        "patch correctness",
+        "patch validation",
+        "bug localization",
+        "fault localization",
+        "vulnerability localization"
+      ],
+      "traditional_topic_terms": [
+        "root cause analysis",
+        "patch generation",
+        "patch correctness",
+        "patch validation",
+        "static analysis"
+      ],
+      "llm_agent_terms": [
+        "large language model",
+        "large language models",
+        "LLM",
+        "LLMs",
+        "code LLM",
+        "AI agent",
+        "agentic",
+        "autonomous agent",
+        "software agent",
+        "multi-agent",
+        "tool-using agent",
+        "LLM-based",
+        "LLM-assisted"
+      ],
+      "security_software_terms": [
+        "vulnerability",
+        "vulnerabilities",
+        "software security",
+        "program analysis",
+        "static analysis",
+        "root cause",
+        "fault localization",
+        "bug localization",
+        "vulnerability localization",
+        "patch generation",
+        "automated repair",
+        "program repair",
+        "patch correctness",
+        "patch validation"
+      ],
+      "exclude_keywords": [
+        "fuzzing",
+        "fuzzer",
+        "fuzzers",
+        "coverage-guided fuzzing",
+        "greybox fuzzing",
+        "graybox fuzzing",
+        "mutation-based fuzzing",
+        "AFL",
+        "libFuzzer",
+        "seed selection",
+        "corpus minimization",
+        "LLM pretraining",
+        "pre-training large language models",
+        "model architecture",
+        "language model training",
+        "instruction tuning",
+        "alignment",
+        "NLP benchmark",
+        "jailbreak",
+        "jailbreaking",
+        "prompt injection",
+        "membership inference",
+        "model extraction",
+        "model stealing",
+        "mixture-of-experts LLMs",
+        "privacy in large language models",
+        "adversarial examples",
+        "education",
+        "position paper"
+      ],
+      "arxiv_categories": [
+        "cs.CR",
+        "cs.SE",
+        "cs.PL",
+        "cs.AI"
+      ],
+      "top_venue_exception": {
+        "enabled": true,
+        "security_venues": [
+          "IEEE S&P",
+          "S&P",
+          "SP",
+          "USENIX Security",
+          "Security",
+          "CCS",
+          "NDSS"
+        ],
+        "software_engineering_venues": [
+          "ICSE",
+          "FSE",
+          "ESEC/FSE",
+          "ASE",
+          "ISSTA"
+        ],
+        "systems_architecture_venues": [
+          "ASPLOS",
+          "OSDI",
+          "SOSP",
+          "ATC",
+          "USENIX ATC"
+        ]
+      },
+      "cspapers_venues": [
+        "SP",
+        "CCS",
+        "NDSS",
+        "ICSE",
+        "FSE",
+        "ASE",
+        "ISSTA",
+        "ASPLOS",
+        "OSDI",
+        "SOSP",
+        "ATC"
+      ],
+      "task_label_rules": [
+        {
+          "label": "LLM/Agent应用",
+          "match": "llm_agent"
+        },
+        {
+          "label": "漏洞挖掘-非Fuzzing",
+          "terms": [
+            "vulnerability discovery",
+            "vulnerability detection",
+            "bug finding",
+            "defect detection",
+            "security bug",
+            "vulnerabilities in",
+            "detect vulnerabilities"
+          ]
+        },
+        {
+          "label": "自动修复",
+          "terms": [
+            "automated program repair",
+            "automatic program repair",
+            "automated repair",
+            "program repair"
+          ]
+        },
+        {
+          "label": "Patch Generation",
+          "terms": [
+            "patch generation",
+            "generate patches",
+            "patch synthesis",
+            "patch recommendation",
+            "security patch"
+          ]
+        },
+        {
+          "label": "Root Cause Analysis",
+          "terms": [
+            "root cause analysis",
+            "root cause",
+            "cause analysis",
+            "bug diagnosis",
+            "failure diagnosis"
+          ]
+        },
+        {
+          "label": "静态分析",
+          "terms": [
+            "static analysis",
+            "taint analysis",
+            "data-flow analysis",
+            "control-flow analysis",
+            "program analysis"
+          ]
+        },
+        {
+          "label": "漏洞定位",
+          "terms": [
+            "vulnerability localization",
+            "bug localization",
+            "fault localization",
+            "locating bugs",
+            "localize vulnerabilities"
+          ]
+        },
+        {
+          "label": "Patch Correctness",
+          "terms": [
+            "patch correctness",
+            "patch validation",
+            "patch verification",
+            "incorrect patches",
+            "regression test",
+            "regression testing"
+          ]
+        },
+        {
+          "label": "trditional",
+          "match": "top_venue_traditional_without_llm"
+        }
+      ],
+      "target_label_rules": [
+        {
+          "label": "Linux Kernel",
+          "terms": [
+            "linux kernel",
+            "kernel driver",
+            "kernel module",
+            "kernel subsystem",
+            "ebpf",
+            "device driver"
+          ]
+        },
+        {
+          "label": "C/C++ OSS",
+          "terms": [
+            "c/c++",
+            "c program",
+            "c programs",
+            "c++ program",
+            "c++ projects",
+            "native code",
+            "memory safety",
+            "buffer overflow",
+            "use-after-free",
+            "integer overflow",
+            "open-source c"
+          ]
+        },
+        {
+          "label": "Java OSS",
+          "terms": [
+            "java",
+            "jvm",
+            "maven",
+            "gradle",
+            "spring",
+            "java open-source",
+            "java projects"
+          ]
+        },
+        {
+          "label": "Closed-source Ecosystem",
+          "terms": [
+            "closed-source",
+            "closed source",
+            "proprietary software",
+            "commercial software",
+            "binary-only",
+            "black-box",
+            "mobile apps"
+          ]
+        },
+        {
+          "label": "Package Ecosystem",
+          "terms": [
+            "package ecosystem",
+            "npm",
+            "pypi",
+            "maven central",
+            "dependency",
+            "dependencies",
+            "supply chain"
+          ]
+        },
+        {
+          "label": "Android",
+          "terms": [
+            "android",
+            "apk",
+            "mobile app",
+            "android app"
+          ]
+        },
+        {
+          "label": "Browser",
+          "terms": [
+            "browser",
+            "chromium",
+            "chrome",
+            "firefox",
+            "webkit",
+            "javascript engine",
+            "v8 engine"
+          ]
+        },
+        {
+          "label": "Smart Contract",
+          "terms": [
+            "smart contract",
+            "smart contracts",
+            "solidity",
+            "ethereum",
+            "reentrancy",
+            "blockchain contract"
+          ]
+        },
+        {
+          "label": "综述",
+          "terms": [
+            "survey",
+            "systematic literature review",
+            "literature review",
+            "review of",
+            "taxonomy",
+            "sok",
+            "systematization of knowledge",
+            "overview"
+          ]
+        },
+        {
+          "label": "Firmware/Binary",
+          "terms": [
+            "firmware",
+            "binary analysis",
+            "binary code",
+            "binary program",
+            "embedded device",
+            "iot firmware"
+          ]
+        },
+        {
+          "label": "General OSS",
+          "terms": [
+            "open-source",
+            "open source",
+            "oss",
+            "github",
+            "software repositories",
+            "repository mining"
+          ]
+        }
+      ],
+      "fallback_task_label": "其他",
+      "fallback_target_label": "Unknown/Unclear",
+      "reason_templates": {
+        "llm_topic": "LLM/Agent 软件安全应用命中",
+        "top_venue": "顶级 venue 例外通道命中：{venue}",
+        "topic": "主题：{terms}",
+        "tasks": "任务：{labels}",
+        "targets": "目标生态：{labels}",
+        "default": "匹配默认兴趣规则",
+        "reject_exclude": "硬过滤：{terms}",
+        "reject_llm_no_topic": "LLM/Agent 相关但不是目标应用方向",
+        "reject_top_no_traditional": "顶会传统方法未命中严格关键词",
+        "reject_no_match": "未命中目标应用方向或顶会传统方法例外"
+      }
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+"""Paper data source adapters."""
+
