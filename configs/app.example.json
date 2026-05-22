@@ -145,6 +145,20 @@
     "max_tokens": 900,
     "timeout_seconds": 60
   },
+  "papis": {
+    "enabled": true,
+    "library_name": "papersearch",
+    "library_path": "~/Library/Application Support/PaperSearch/papis-library",
+    "symlink_path": "~/PaperSearchPapis",
+    "remote_url": "",
+    "auto_archive_on_save": true,
+    "auto_commit": true,
+    "auto_push": true,
+    "use_git_lfs": true,
+    "write_cli_config": true,
+    "folder_template": "{primary_task}/{primary_target}/{year}-{slug}",
+    "download_timeout_seconds": 20
+  },
   "storage": {
     "database_path": "data/papersearch.sqlite"
   }

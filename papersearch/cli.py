@@ -6,6 +6,7 @@ import json
 from . import db
 from .config import config_check, load_config, redact_config
 from .llm_summary import summarize_saved_papers
+from .papis_integration import attach_pdf_to_paper, init_papis, papis_status, sync_saved_papers
 from .pdf_resolver import resolve_missing_pdfs
 from .pipeline import reclassify_existing, run_update
 from .server import run_server
@@ -34,6 +35,18 @@ def main() -> None:
     summary_parser = subparsers.add_parser("summarize-saved", help="Generate DeepSeek summaries for saved papers without existing summaries.")
     summary_parser.add_argument("--limit", type=int, default=None)
 
+    init_papis_parser = subparsers.add_parser("init-papis", help="Initialize the configured Papis library.")
+    init_papis_parser.add_argument("--install-tools", action="store_true", help="Install papis/git-lfs when possible.")
+    init_papis_parser.add_argument("--remote-url", default="", help="Optional Papis library Git remote URL.")
+
+    sync_papis_parser = subparsers.add_parser("sync-papis", help="Sync saved papers into the configured Papis library.")
+    sync_papis_parser.add_argument("--saved-only", action="store_true", help="Compatibility flag; saved papers are always synced.")
+    sync_papis_parser.add_argument("--limit", type=int, default=None)
+
+    attach_pdf_parser = subparsers.add_parser("attach-pdf", help="Attach a local PDF to a paper and sync it to Papis.")
+    attach_pdf_parser.add_argument("paper_id", type=int)
+    attach_pdf_parser.add_argument("pdf_path")
+
     serve_parser = subparsers.add_parser("serve", help="Run the local web app.")
     serve_parser.add_argument("--host", default="127.0.0.1")
     serve_parser.add_argument("--port", type=int, default=8765)
@@ -42,6 +55,7 @@ def main() -> None:
     subparsers.add_parser("reclassify", help="Re-apply current interest rules to existing papers.")
     subparsers.add_parser("show-config", help="Print the resolved config.")
     subparsers.add_parser("config-check", help="Validate the resolved config without exposing secrets.")
+    subparsers.add_parser("papis-status", help="Show Papis integration status.")
 
     args = parser.parse_args()
     if args.command == "update":
@@ -69,6 +83,15 @@ def main() -> None:
     if args.command == "summarize-saved":
         print(json.dumps(summarize_saved_papers(args.config, limit=args.limit), ensure_ascii=False, indent=2))
         return
+    if args.command == "init-papis":
+        print(json.dumps(init_papis(args.config, install_tools=args.install_tools, remote_url=args.remote_url), ensure_ascii=False, indent=2))
+        return
+    if args.command == "sync-papis":
+        print(json.dumps(sync_saved_papers(args.config, limit=args.limit), ensure_ascii=False, indent=2))
+        return
+    if args.command == "attach-pdf":
+        print(json.dumps(attach_pdf_to_paper(args.config, args.paper_id, args.pdf_path), ensure_ascii=False, indent=2))
+        return
     if args.command == "init-db":
         config = load_config(args.config)
         db.init_db(config["storage"]["database_path_resolved"])
@@ -82,6 +105,9 @@ def main() -> None:
         return
     if args.command == "config-check":
         print(json.dumps(config_check(args.config), ensure_ascii=False, indent=2))
+        return
+    if args.command == "papis-status":
+        print(json.dumps(papis_status(args.config), ensure_ascii=False, indent=2))
         return
 
     parser.print_help()

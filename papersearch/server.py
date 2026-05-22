@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import cgi
 import json
 import mimetypes
+import tempfile
 import threading
 import time
 from datetime import datetime
@@ -15,6 +17,7 @@ from urllib.parse import parse_qs, urlparse
 from . import db
 from .config import ROOT_DIR, load_config, redact_config
 from .llm_summary import summarize_saved_papers
+from .papis_integration import attach_pdf_to_paper, papis_status, sync_paper_to_papis
 from .pipeline import run_update
 
 
@@ -29,6 +32,7 @@ class AppState:
         db.init_db(self.db_path)
         self.update_lock = threading.Lock()
         self.summary_lock = threading.Lock()
+        self.papis_lock = threading.Lock()
         self.update_status: dict[str, Any] = {"running": False, "last_summary": None}
         self.summary_status: dict[str, Any] = {"running": False, "last_summary": None}
         self.scheduler_started = False
@@ -111,6 +115,9 @@ class PaperSearchHandler(BaseHTTPRequestHandler):
         if path == "/api/summary-status":
             self._send_json(self.state.summary_status)
             return
+        if path == "/api/papis/status":
+            self._send_json(papis_status(self.state.config_path))
+            return
 
         with db.connect(self.state.db_path) as conn:
             if path == "/api/papers":
@@ -138,6 +145,10 @@ class PaperSearchHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API.
         parsed = urlparse(self.path)
         path = parsed.path
+        if path.startswith("/api/papers/") and path.endswith("/pdf"):
+            self._handle_pdf_upload(path)
+            return
+
         length = int(self.headers.get("Content-Length", "0") or 0)
         body = self.rfile.read(length) if length else b"{}"
         try:
@@ -195,7 +206,30 @@ class PaperSearchHandler(BaseHTTPRequestHandler):
                 if paper is None:
                     self._send_json({"error": "Paper not found"}, HTTPStatus.NOT_FOUND)
                 else:
-                    self._send_json({"paper": paper})
+                    papis_result = None
+                    if (
+                        payload.get("is_saved") is True
+                        and self.state.config.get("papis", {}).get("enabled", False)
+                        and self.state.config.get("papis", {}).get("auto_archive_on_save", True)
+                        and not paper.get("papis_id")
+                    ):
+                        with self.state.papis_lock:
+                            papis_result = sync_paper_to_papis(conn, paper_id, self.state.config)
+                            paper = db.get_paper(conn, paper_id) or paper
+                    self._send_json({"paper": paper, "papis": papis_result})
+            return
+
+        if path.startswith("/api/papers/") and path.endswith("/papis/sync"):
+            try:
+                paper_id = int(path.split("/")[3])
+            except (IndexError, ValueError):
+                self._send_json({"error": "Invalid paper id"}, HTTPStatus.BAD_REQUEST)
+                return
+            with self.state.papis_lock:
+                with db.connect(self.state.db_path) as conn:
+                    result = sync_paper_to_papis(conn, paper_id, self.state.config)
+                    paper = db.get_paper(conn, paper_id)
+            self._send_json({"paper": paper, "papis": result})
             return
 
         if path.startswith("/api/papers/") and path.endswith("/delete"):
@@ -213,6 +247,45 @@ class PaperSearchHandler(BaseHTTPRequestHandler):
             return
 
         self._send_text("Not found", HTTPStatus.NOT_FOUND)
+
+    def _handle_pdf_upload(self, path: str) -> None:
+        try:
+            paper_id = int(path.split("/")[3])
+        except (IndexError, ValueError):
+            self._send_json({"error": "Invalid paper id"}, HTTPStatus.BAD_REQUEST)
+            return
+        content_type = self.headers.get("Content-Type", "")
+        if "multipart/form-data" not in content_type:
+            self._send_json({"error": "Expected multipart/form-data"}, HTTPStatus.BAD_REQUEST)
+            return
+        form = cgi.FieldStorage(
+            fp=self.rfile,
+            headers=self.headers,
+            environ={
+                "REQUEST_METHOD": "POST",
+                "CONTENT_TYPE": content_type,
+                "CONTENT_LENGTH": self.headers.get("Content-Length", "0"),
+            },
+        )
+        field = form["pdf"] if "pdf" in form else None
+        if field is None or not getattr(field, "file", None):
+            self._send_json({"error": "Missing pdf file field"}, HTTPStatus.BAD_REQUEST)
+            return
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as handle:
+            temp_path = Path(handle.name)
+            shutil_buffer = field.file.read()
+            handle.write(shutil_buffer)
+        try:
+            with self.state.papis_lock:
+                result = attach_pdf_to_paper(self.state.config_path, paper_id, str(temp_path))
+                with db.connect(self.state.db_path) as conn:
+                    paper = db.get_paper(conn, paper_id)
+            self._send_json({"paper": paper, "papis": result})
+        finally:
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
 
 
 def _scheduler_loop(state: AppState) -> None:

@@ -72,11 +72,47 @@ python3 -m papersearch update --bootstrap
 python3 -m papersearch update
 python3 -m papersearch resolve-pdfs --limit 50
 python3 -m papersearch summarize-saved --limit 10
+python3 -m papersearch init-papis --install-tools
+python3 -m papersearch sync-papis --saved-only
+python3 -m papersearch attach-pdf <paper-id> /path/to/paper.pdf
+python3 -m papersearch papis-status
 python3 -m papersearch serve --port 8765
 python3 -m unittest discover -s tests
 ```
 
 The web server includes a lightweight daily scheduler. It runs the update once per configured local day while the server process is alive. The UI also has buttons for immediate paper updates and saved-paper summaries.
+
+## Papis Library
+
+When `papis.enabled` is true, saving a paper can archive it into a local Papis library. Papers with PDFs are imported with the PDF attached; papers without PDFs are still imported as metadata-only entries and marked `pdf-missing`.
+
+The default library path is:
+
+```text
+~/Library/Application Support/PaperSearch/papis-library
+```
+
+PaperSearch also creates:
+
+```text
+~/PaperSearchPapis
+```
+
+as a convenient symlink. Configure `papis.remote_url` in `configs/local.json` if you want automatic GitHub pushes for the Papis library. PDFs are tracked with Git LFS when `papis.use_git_lfs` is enabled.
+
+## Codex Skills
+
+The `skills/` directory contains optional Codex skills for working with the Papis library from another session:
+
+- `papis-paper-library`: find saved papers and inspect `info.yaml`, PDFs, and notes
+- `papis-paper-notes`: read papers and create or update `notes.md`
+- `papis-github-sync`: commit and push Papis library changes with Git LFS checks
+
+Install them into your Codex skills directory:
+
+```bash
+cp -R skills/papis-* ~/.codex/skills/
+```
 
 ## Private Files
 

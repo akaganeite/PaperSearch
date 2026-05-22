@@ -21,8 +21,10 @@ function escapeHtml(value) {
 }
 
 async function fetchJson(url, options = {}) {
+  const body = options.body;
+  const headers = body instanceof FormData ? {} : { "Content-Type": "application/json" };
   const response = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
+    headers,
     ...options,
   });
   if (!response.ok) {
@@ -118,6 +120,14 @@ function renderLlmSummary(paper) {
   `;
 }
 
+function papisLabel(paper) {
+  const status = paper.papis_status || "not_exported";
+  if (status === "synced") return "Papis: synced";
+  if (status === "pending_pdf") return "Papis: needs PDF";
+  if (status === "error") return "Papis: error";
+  return "Papis: not exported";
+}
+
 function renderPaper(paper) {
   const sourceTags = (paper.sources || []).map((label) => `<span class="tag source">${escapeHtml(label)}</span>`).join("");
   const taskTags = (paper.task_labels || []).map((label) => `<span class="tag">${escapeHtml(label)}</span>`).join("");
@@ -134,6 +144,8 @@ function renderPaper(paper) {
     : `
         <button class="paper-action${paper.is_saved ? " active" : ""}" data-action="save">${paper.is_saved ? "Saved" : "Save"}</button>
         <button class="paper-action${paper.is_read ? " active" : ""}" data-action="read">${paper.is_read ? "Read" : "Mark read"}</button>
+        ${paper.is_saved ? `<button class="paper-action" data-action="sync-papis">Sync Papis</button>` : ""}
+        ${paper.is_saved ? `<button class="paper-action" data-action="attach-pdf">Attach PDF</button><input class="pdf-input" type="file" accept="application/pdf" hidden />` : ""}
         <button class="paper-action danger" data-action="delete">Delete</button>
         ${!paper.pdf_url && paper.publisher_pdf_url ? `<a class="paper-action access-link" href="${escapeHtml(paper.publisher_pdf_url)}" target="_blank" rel="noreferrer">Access PDF</a>` : ""}
         ${!paper.pdf_url && paper.publisher_url ? `<a class="paper-action access-link" href="${escapeHtml(paper.publisher_url)}" target="_blank" rel="noreferrer">Access page</a>` : ""}
@@ -149,6 +161,8 @@ function renderPaper(paper) {
             ${paper.published_at ? `<span>${escapeHtml(paper.published_at.slice(0, 10))}</span>` : ""}
             ${paper.first_seen_at ? `<span>Added ${escapeHtml(formatDate(paper.first_seen_at))}</span>` : ""}
             ${paper.pdf_url ? `<span>PDF: ${escapeHtml(paper.pdf_source || "found")}</span>` : ""}
+            ${paper.is_saved ? `<span>${escapeHtml(papisLabel(paper))}</span>` : ""}
+            ${paper.papis_error ? `<span class="error">Papis error</span>` : ""}
             ${!paper.pdf_url && paper.publisher_pdf_url ? `<span>Access PDF: ${escapeHtml(paper.publisher_pdf_source || "publisher")}</span>` : ""}
             ${!paper.pdf_url && paper.publisher_url ? `<span>Access: ${escapeHtml(paper.publisher_source || "publisher")}</span>` : ""}
             ${paper.deleted_at ? `<span>Deleted ${escapeHtml(paper.deleted_at.slice(0, 10))}</span>` : ""}
@@ -161,6 +175,7 @@ function renderPaper(paper) {
       ${renderLlmSummary(paper)}
       <div class="tag-row">${sourceTags}${taskTags}${targetTags}</div>
       <p class="reason">${escapeHtml(paper.recommendation_reason || "")}</p>
+      ${paper.papis_error ? `<p class="reason error">${escapeHtml(paper.papis_error)}</p>` : ""}
       <div class="paper-actions">
         ${actionHtml}
       </div>
@@ -308,6 +323,17 @@ function bindEvents() {
         await refreshAll();
         return;
       }
+      if (actionName === "sync-papis") {
+        action.disabled = true;
+        await fetchJson(`/api/papers/${paperId}/papis/sync`, { method: "POST", body: JSON.stringify({}) });
+        await refreshAll();
+        return;
+      }
+      if (actionName === "attach-pdf") {
+        const input = card.querySelector(".pdf-input");
+        if (input) input.click();
+        return;
+      }
 
       const payload = {};
       if (actionName === "save") payload.is_saved = !action.classList.contains("active");
@@ -315,6 +341,18 @@ function bindEvents() {
       await fetchJson(`/api/papers/${paperId}/flags`, { method: "POST", body: JSON.stringify(payload) });
       await refreshAll();
     }
+  });
+
+  document.body.addEventListener("change", async (event) => {
+    const input = event.target.closest(".pdf-input");
+    if (!input || !input.files || !input.files[0]) return;
+    const card = input.closest(".paper-card");
+    const paperId = Number(card.dataset.paperId);
+    const form = new FormData();
+    form.append("pdf", input.files[0]);
+    await fetchJson(`/api/papers/${paperId}/pdf`, { method: "POST", body: form });
+    input.value = "";
+    await refreshAll();
   });
 }
 

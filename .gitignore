@@ -12,6 +12,8 @@ data/*.sqlite
 data/*.sqlite-*
 configs/local.json
 configs/interests.json
+papis-library/
+PaperSearchPapis
 
 pets/
 scripts/create_xiaobei_pet.py

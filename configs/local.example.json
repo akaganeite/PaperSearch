@@ -6,6 +6,12 @@
   "llm_summary": {
     "api_key_env": "DEEPSEEK_API_KEY"
   },
+  "papis": {
+    "enabled": true,
+    "library_path": "~/Library/Application Support/PaperSearch/papis-library",
+    "remote_url": "git@github.com:YOUR_USER/YOUR_PAPIS_LIBRARY.git",
+    "write_cli_config": true
+  },
   "storage": {
     "database_path": "data/papersearch.sqlite"
   }

@@ -72,6 +72,35 @@ class DeletedPaperTests(unittest.TestCase):
                 self.assertEqual([paper["title"] for paper in newest], ["Second Paper", "First Paper"])
                 self.assertEqual([paper["title"] for paper in oldest], ["First Paper", "Second Paper"])
 
+    def test_list_not_saved_papers(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "papersearch.sqlite"
+            db.init_db(db_path)
+            saved = {
+                "source": "arXiv",
+                "title": "Saved Paper",
+                "abstract": "A software security paper.",
+                "task_labels": ["LLM/Agent应用"],
+                "target_labels": ["Unknown/Unclear"],
+                "relevance_score": 10,
+            }
+            unsaved = {
+                "source": "arXiv",
+                "title": "Unsaved Paper",
+                "abstract": "Another software security paper.",
+                "task_labels": ["LLM/Agent应用"],
+                "target_labels": ["Unknown/Unclear"],
+                "relevance_score": 20,
+            }
+            with db.connect(db_path) as conn:
+                self.assertTrue(db.upsert_paper(conn, saved))
+                self.assertTrue(db.upsert_paper(conn, unsaved))
+                saved_row = next(paper for paper in db.list_papers(conn) if paper["title"] == "Saved Paper")
+                db.set_paper_flags(conn, saved_row["id"], {"is_saved": True})
+
+                papers = db.list_papers(conn, status="notsaved")
+                self.assertEqual([paper["title"] for paper in papers], ["Unsaved Paper"])
+
     def test_saved_summary_queue_skips_already_summarized(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "papersearch.sqlite"

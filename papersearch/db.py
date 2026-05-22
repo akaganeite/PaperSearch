@@ -65,6 +65,12 @@ def init_db(db_path: str | Path) -> None:
                 llm_summary_generated_at TEXT NOT NULL DEFAULT '',
                 llm_summary_status TEXT NOT NULL DEFAULT 'pending',
                 llm_summary_error TEXT NOT NULL DEFAULT '',
+                papis_status TEXT NOT NULL DEFAULT 'not_exported',
+                papis_id TEXT NOT NULL DEFAULT '',
+                papis_folder TEXT NOT NULL DEFAULT '',
+                papis_synced_at TEXT NOT NULL DEFAULT '',
+                papis_error TEXT NOT NULL DEFAULT '',
+                local_pdf_path TEXT NOT NULL DEFAULT '',
                 first_seen_at TEXT NOT NULL,
                 last_seen_at TEXT NOT NULL,
                 raw_json TEXT NOT NULL DEFAULT '{}'
@@ -135,6 +141,12 @@ def init_db(db_path: str | Path) -> None:
         _ensure_column(conn, "papers", "llm_summary_generated_at", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(conn, "papers", "llm_summary_status", "TEXT NOT NULL DEFAULT 'pending'")
         _ensure_column(conn, "papers", "llm_summary_error", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(conn, "papers", "papis_status", "TEXT NOT NULL DEFAULT 'not_exported'")
+        _ensure_column(conn, "papers", "papis_id", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(conn, "papers", "papis_folder", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(conn, "papers", "papis_synced_at", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(conn, "papers", "papis_error", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(conn, "papers", "local_pdf_path", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(conn, "deleted_papers", "publisher_url", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(conn, "deleted_papers", "publisher_source", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(conn, "deleted_papers", "publisher_pdf_url", "TEXT NOT NULL DEFAULT ''")
@@ -142,6 +154,7 @@ def init_db(db_path: str | Path) -> None:
         _ensure_column(conn, "deleted_papers", "first_seen_at", "TEXT NOT NULL DEFAULT ''")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_deleted_papers_first_seen ON deleted_papers(first_seen_at DESC)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_papers_saved_summary ON papers(is_saved, llm_summary_status)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_papers_papis_status ON papers(papis_status)")
         conn.execute(
             """
             UPDATE papers
@@ -449,6 +462,8 @@ def list_papers(
         clauses.append("is_read = 0")
     elif status == "saved":
         clauses.append("is_saved = 1")
+    elif status == "notsaved":
+        clauses.append("is_saved = 0")
 
     where_sql = "WHERE " + " AND ".join(clauses) if clauses else ""
     order_by = _paper_order_by(sort)
@@ -573,6 +588,43 @@ def update_pdf_metadata(conn: sqlite3.Connection, paper_id: int, metadata: Dict[
     )
 
 
+def update_papis_metadata(
+    conn: sqlite3.Connection,
+    paper_id: int,
+    *,
+    papis_status: str,
+    papis_id: str = "",
+    papis_folder: str = "",
+    papis_error: str = "",
+    local_pdf_path: str = "",
+) -> None:
+    conn.execute(
+        """
+        UPDATE papers
+        SET papis_status = ?,
+            papis_id = CASE WHEN ? != '' THEN ? ELSE papis_id END,
+            papis_folder = CASE WHEN ? != '' THEN ? ELSE papis_folder END,
+            papis_synced_at = CASE WHEN ? IN ('synced', 'pending_pdf') THEN ? ELSE papis_synced_at END,
+            papis_error = ?,
+            local_pdf_path = CASE WHEN ? != '' THEN ? ELSE local_pdf_path END
+        WHERE id = ?
+        """,
+        (
+            papis_status,
+            papis_id,
+            papis_id,
+            papis_folder,
+            papis_folder,
+            papis_status,
+            utc_now(),
+            papis_error[:2000],
+            local_pdf_path,
+            local_pdf_path,
+            paper_id,
+        ),
+    )
+
+
 def update_llm_summary(
     conn: sqlite3.Connection,
     paper_id: int,
@@ -666,6 +718,11 @@ def set_paper_flags(conn: sqlite3.Connection, paper_id: int, flags: Dict[str, An
     if updates:
         params.append(paper_id)
         conn.execute(f"UPDATE papers SET {', '.join(updates)} WHERE id = ?", params)
+    row = conn.execute("SELECT * FROM papers WHERE id = ?", (paper_id,)).fetchone()
+    return _paper_from_row(row) if row else None
+
+
+def get_paper(conn: sqlite3.Connection, paper_id: int) -> Optional[Dict[str, Any]]:
     row = conn.execute("SELECT * FROM papers WHERE id = ?", (paper_id,)).fetchone()
     return _paper_from_row(row) if row else None
 
@@ -793,6 +850,9 @@ def get_stats(conn: sqlite3.Connection) -> Dict[str, Any]:
         "saved": sum(1 for paper in papers if paper["is_saved"]),
         "saved_with_summary": sum(1 for paper in papers if paper["is_saved"] and paper.get("llm_summary")),
         "saved_missing_summary": sum(1 for paper in papers if paper["is_saved"] and not paper.get("llm_summary")),
+        "saved_papis_synced": sum(1 for paper in papers if paper["is_saved"] and paper.get("papis_status") == "synced"),
+        "saved_papis_pending_pdf": sum(1 for paper in papers if paper["is_saved"] and paper.get("papis_status") == "pending_pdf"),
+        "saved_papis_error": sum(1 for paper in papers if paper["is_saved"] and paper.get("papis_status") == "error"),
         "with_pdf": sum(1 for paper in papers if paper.get("pdf_url")),
         "missing_pdf": sum(1 for paper in papers if not paper.get("pdf_url")),
         "publisher_links": sum(1 for paper in papers if paper.get("publisher_url") and not paper.get("pdf_url")),
