@@ -4,9 +4,11 @@ import argparse
 import cgi
 import json
 import mimetypes
+import sqlite3
 import tempfile
 import threading
 import time
+import traceback
 from datetime import datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -30,6 +32,8 @@ class AppState:
         self.config = load_config(config_path)
         self.db_path = self.config["storage"]["database_path_resolved"]
         db.init_db(self.db_path)
+        with db.connect(self.db_path) as conn:
+            db.mark_running_run_logs_interrupted(conn, "Interrupted by PaperSearch server restart")
         self.update_lock = threading.Lock()
         self.summary_lock = threading.Lock()
         self.papis_lock = threading.Lock()
@@ -49,6 +53,17 @@ def _public_config(config: dict[str, Any]) -> dict[str, Any]:
     public_config = redact_config(config)
     public_config["storage"] = {"database_path": public_config.get("storage", {}).get("database_path")}
     return public_config
+
+
+def _update_error_summary(bootstrap: bool, source: str, exc: Exception) -> dict[str, Any]:
+    return {
+        "bootstrap": bootstrap,
+        "sources": {},
+        "started_at": db.utc_now(),
+        "finished_at": db.utc_now(),
+        "source_filter": source,
+        "error": str(exc),
+    }
 
 
 class PaperSearchHandler(BaseHTTPRequestHandler):
@@ -78,6 +93,23 @@ class PaperSearchHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _queue_papis_sync(self, paper_id: int) -> None:
+        state = self.state
+
+        def worker() -> None:
+            try:
+                with state.papis_lock:
+                    with db.connect(state.db_path) as conn:
+                        sync_paper_to_papis(conn, paper_id, state.config)
+            except Exception as exc:  # noqa: BLE001 - keep background sync from breaking the UI.
+                try:
+                    with db.connect(state.db_path) as conn:
+                        db.update_papis_metadata(conn, paper_id, papis_status="error", papis_error=str(exc))
+                except Exception as nested_exc:  # noqa: BLE001
+                    print(f"Papis background sync failed for paper {paper_id}: {exc}; status update failed: {nested_exc}")
+
+        threading.Thread(target=worker, daemon=True, name=f"papis-sync-{paper_id}").start()
 
     def _send_file(self, path: Path) -> None:
         if not path.exists() or not path.is_file():
@@ -143,6 +175,21 @@ class PaperSearchHandler(BaseHTTPRequestHandler):
         self._send_text("Not found", HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API.
+        try:
+            self._do_POST()
+        except sqlite3.OperationalError as exc:
+            if "locked" in str(exc).lower():
+                self._send_json(
+                    {
+                        "error": "Database is busy. Please retry after the current update step finishes.",
+                        "details": str(exc),
+                    },
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                )
+                return
+            raise
+
+    def _do_POST(self) -> None:
         parsed = urlparse(self.path)
         path = parsed.path
         if path.startswith("/api/papers/") and path.endswith("/pdf"):
@@ -167,10 +214,16 @@ class PaperSearchHandler(BaseHTTPRequestHandler):
             def worker() -> None:
                 with self.state.update_lock:
                     self.state.update_status = {"running": True, "last_summary": self.state.update_status.get("last_summary")}
-                    summary = run_update(self.state.config_path, bootstrap=bootstrap, source_filter=source)
-                    self.state.update_status = {"running": False, "last_summary": summary}
-                    if summary.get("llm_summaries") is not None:
-                        self.state.summary_status = {"running": False, "last_summary": summary["llm_summaries"]}
+                    try:
+                        summary = run_update(self.state.config_path, bootstrap=bootstrap, source_filter=source)
+                    except Exception as exc:  # noqa: BLE001 - keep the UI from getting stuck in Updating.
+                        print("Manual update failed:")
+                        traceback.print_exc()
+                        summary = _update_error_summary(bootstrap, source, exc)
+                    finally:
+                        self.state.update_status = {"running": False, "last_summary": summary}
+                        if summary.get("llm_summaries") is not None:
+                            self.state.summary_status = {"running": False, "last_summary": summary["llm_summaries"]}
 
             threading.Thread(target=worker, daemon=True).start()
             self._send_json({"ok": True, "running": True})
@@ -188,8 +241,14 @@ class PaperSearchHandler(BaseHTTPRequestHandler):
             def worker() -> None:
                 with self.state.summary_lock:
                     self.state.summary_status = {"running": True, "last_summary": self.state.summary_status.get("last_summary")}
-                    summary = summarize_saved_papers(self.state.config_path, limit=int(limit) if limit else None)
-                    self.state.summary_status = {"running": False, "last_summary": summary}
+                    try:
+                        summary = summarize_saved_papers(self.state.config_path, limit=int(limit) if limit else None)
+                    except Exception as exc:  # noqa: BLE001
+                        print("Summary update failed:")
+                        traceback.print_exc()
+                        summary = {"checked": 0, "summarized": 0, "skipped": 0, "errors": 1, "error_messages": [str(exc)]}
+                    finally:
+                        self.state.summary_status = {"running": False, "last_summary": summary}
 
             threading.Thread(target=worker, daemon=True).start()
             self._send_json({"ok": True, "running": True})
@@ -201,22 +260,22 @@ class PaperSearchHandler(BaseHTTPRequestHandler):
             except (IndexError, ValueError):
                 self._send_json({"error": "Invalid paper id"}, HTTPStatus.BAD_REQUEST)
                 return
+            papis_result = None
             with db.connect(self.state.db_path) as conn:
                 paper = db.set_paper_flags(conn, paper_id, payload)
-                if paper is None:
-                    self._send_json({"error": "Paper not found"}, HTTPStatus.NOT_FOUND)
-                else:
-                    papis_result = None
-                    if (
-                        payload.get("is_saved") is True
-                        and self.state.config.get("papis", {}).get("enabled", False)
-                        and self.state.config.get("papis", {}).get("auto_archive_on_save", True)
-                        and not paper.get("papis_id")
-                    ):
-                        with self.state.papis_lock:
-                            papis_result = sync_paper_to_papis(conn, paper_id, self.state.config)
-                            paper = db.get_paper(conn, paper_id) or paper
-                    self._send_json({"paper": paper, "papis": papis_result})
+                if paper is not None and (
+                    payload.get("is_saved") is True
+                    and self.state.config.get("papis", {}).get("enabled", False)
+                    and self.state.config.get("papis", {}).get("auto_archive_on_save", True)
+                    and not paper.get("papis_id")
+                ):
+                    papis_result = {"ok": True, "status": "queued"}
+            if paper is None:
+                self._send_json({"error": "Paper not found"}, HTTPStatus.NOT_FOUND)
+            else:
+                if papis_result:
+                    self._queue_papis_sync(paper_id)
+                self._send_json({"paper": paper, "papis": papis_result})
             return
 
         if path.startswith("/api/papers/") and path.endswith("/papis/sync"):
@@ -300,10 +359,16 @@ def _scheduler_loop(state: AppState) -> None:
                 if not state.update_lock.locked():
                     with state.update_lock:
                         state.update_status = {"running": True, "last_summary": state.update_status.get("last_summary")}
-                        summary = run_update(state.config_path, bootstrap=False)
-                        state.update_status = {"running": False, "last_summary": summary}
-                        if summary.get("llm_summaries") is not None:
-                            state.summary_status = {"running": False, "last_summary": summary["llm_summaries"]}
+                        try:
+                            summary = run_update(state.config_path, bootstrap=False)
+                        except Exception as exc:  # noqa: BLE001
+                            print("Scheduled update failed:")
+                            traceback.print_exc()
+                            summary = _update_error_summary(False, "", exc)
+                        finally:
+                            state.update_status = {"running": False, "last_summary": summary}
+                            if summary.get("llm_summaries") is not None:
+                                state.summary_status = {"running": False, "last_summary": summary["llm_summaries"]}
                     last_run_date = today
             time.sleep(60)
         except Exception as exc:  # noqa: BLE001 - scheduler must stay alive.

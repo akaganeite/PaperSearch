@@ -9,7 +9,7 @@ from typing import Any, Dict, Iterable
 
 from . import db
 from .config import load_config
-from .sources.common import USER_AGENT, SourceError, http_get_json
+from .sources.common import USER_AGENT, SourceError, configure_network, http_get_json
 from .text import normalize_title
 
 
@@ -605,6 +605,7 @@ def resolve_missing_pdfs(
     publisher_only: bool = False,
 ) -> Dict[str, Any]:
     config = load_config(config_path)
+    configure_network(config.get("network", {}))
     if not config.get("pdf_resolver", {}).get("enabled", True):
         return {"checked": 0, "found": 0, "not_found": 0, "disabled": True}
     db_path = config["storage"]["database_path_resolved"]
@@ -623,6 +624,7 @@ def resolve_missing_pdfs(
             else:
                 metadata = resolve_pdf_for_paper(paper, config)
             db.update_pdf_metadata(conn, int(paper["id"]), metadata)
+            conn.commit()
             summary["checked"] += 1
             status = metadata.get("pdf_status", "not_found")
             if status == "found":

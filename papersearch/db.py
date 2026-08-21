@@ -16,9 +16,14 @@ def utc_now() -> str:
 def connect(db_path: str | Path) -> sqlite3.Connection:
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(path))
+    conn = sqlite3.connect(str(path), timeout=30)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=30000")
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.OperationalError as exc:
+        if "locked" not in str(exc).lower():
+            raise
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
@@ -831,6 +836,18 @@ def finish_run_log(
         """,
         (utc_now(), status, fetched_count, kept_count, new_count, error, log_id),
     )
+
+
+def mark_running_run_logs_interrupted(conn: sqlite3.Connection, reason: str) -> int:
+    cursor = conn.execute(
+        """
+        UPDATE run_logs
+        SET finished_at = ?, status = 'error', error = ?
+        WHERE status = 'running'
+        """,
+        (utc_now(), reason),
+    )
+    return int(cursor.rowcount or 0)
 
 
 def list_run_logs(conn: sqlite3.Connection, limit: int = 20) -> list[Dict[str, Any]]:

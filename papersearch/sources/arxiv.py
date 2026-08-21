@@ -27,6 +27,10 @@ def _clean_text(value: str) -> str:
     return re.sub(r"\s+", " ", value or "").strip()
 
 
+def _response_snippet(value: str) -> str:
+    return _clean_text(value[:180])
+
+
 def _term_query(prefix: str, terms: list[str]) -> str:
     parts = []
     for term in terms:
@@ -55,14 +59,30 @@ def _allowed_category(categories: list[str], interest: Dict[str, Any]) -> bool:
     return not allowed or bool(allowed.intersection(categories))
 
 
-def fetch(interest: Dict[str, Any], since: datetime, max_results: int = 200) -> list[Dict[str, Any]]:
+def fetch(
+    interest: Dict[str, Any],
+    since: datetime,
+    max_results: int = 200,
+    timeout_seconds: int = 12,
+    max_runtime_seconds: int = 180,
+) -> list[Dict[str, Any]]:
     per_query_limit = max(10, min(50, max_results // 2))
     papers: list[Dict[str, Any]] = []
     seen_ids: set[str] = set()
     errors: list[str] = []
     successful_queries = 0
+    started_at = time.monotonic()
+
+    def remaining_timeout() -> int:
+        if max_runtime_seconds <= 0:
+            return max(1, timeout_seconds)
+        remaining = max_runtime_seconds - int(time.monotonic() - started_at)
+        if remaining <= 0:
+            raise SourceError(f"arXiv fetch exceeded {max_runtime_seconds}s")
+        return max(1, min(timeout_seconds, remaining))
 
     for query in build_search_queries(interest):
+        timeout = remaining_timeout()
         params = {
             "search_query": query,
             "start": "0",
@@ -72,12 +92,22 @@ def fetch(interest: Dict[str, Any], since: datetime, max_results: int = 200) -> 
         }
         url = ARXIV_API + "?" + urllib.parse.urlencode(params)
         try:
-            xml_text = http_get_text(url, timeout=12, retries=1)
+            xml_text = http_get_text(url, timeout=timeout, retries=1)
         except SourceError as exc:
             errors.append(f"{query}: {exc}")
             continue
         successful_queries += 1
-        root = ET.fromstring(xml_text)
+        try:
+            root = ET.fromstring(xml_text)
+        except ET.ParseError as exc:
+            snippet = _response_snippet(xml_text)
+            if "top.self.location" in xml_text or "wlanuserip" in xml_text:
+                message = "arXiv API returned a captive-portal redirect; enable the configured proxy before updating"
+            else:
+                message = f"Invalid arXiv API XML response: {snippet}"
+            errors.append(f"{query}: {message}")
+            successful_queries -= 1
+            continue
 
         for entry in root.findall("atom:entry", ATOM_NS):
             title = _clean_text(entry.findtext("atom:title", default="", namespaces=ATOM_NS))
@@ -134,7 +164,8 @@ def fetch(interest: Dict[str, Any], since: datetime, max_results: int = 200) -> 
                     },
                 }
             )
-        time.sleep(3)
+        if max_runtime_seconds <= 0 or time.monotonic() - started_at < max_runtime_seconds:
+            time.sleep(3)
 
     if successful_queries == 0 and errors:
         raise SourceError("; ".join(errors[:2]))

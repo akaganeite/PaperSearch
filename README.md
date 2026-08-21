@@ -105,7 +105,7 @@ as a convenient symlink. Configure `papis.remote_url` in `configs/local.json` if
 The `skills/` directory contains optional Codex skills for working with the Papis library from another session:
 
 - `papis-paper-library`: find saved papers and inspect `info.yaml`, PDFs, and notes
-- `papis-paper-notes`: read papers and create or update `notes.md`
+- `papis-paper-notes`: read papers and create or update the title-named Markdown note recorded in `info.yaml`
 - `papis-github-sync`: commit and push Papis library changes with Git LFS checks
 
 Install them into your Codex skills directory:

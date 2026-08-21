@@ -54,7 +54,18 @@ class PapisIntegrationTests(unittest.TestCase):
             self.assertEqual(updated["papis_status"], "pending_pdf")
             info = Path(result["folder"]) / "info.yaml"
             self.assertTrue(info.exists())
-            self.assertIn("pdf-missing", info.read_text(encoding="utf-8"))
+            text = info.read_text(encoding="utf-8")
+            self.assertIn("pdf-missing", text)
+            self.assertIn(
+                'notes: "Agentic Static Analysis for Vulnerability Detection.md"',
+                text,
+            )
+            self.assertTrue(
+                (
+                    Path(result["folder"])
+                    / "Agentic Static Analysis for Vulnerability Detection.md"
+                ).exists()
+            )
 
     def test_attach_pdf_updates_files_and_synced_status(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -89,6 +100,34 @@ class PapisIntegrationTests(unittest.TestCase):
             text = info.read_text(encoding="utf-8")
             self.assertIn("files:", text)
             self.assertIn(".pdf", text)
+
+    def test_note_filename_replaces_unsafe_title_characters(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config = config_for(root / "library")
+            db_path = root / "papers.sqlite"
+            db.init_db(db_path)
+            paper = {
+                "source": "arXiv",
+                "title": "Agent/Reviewer: Is C/C++ Safe?",
+                "abstract": "A software security paper.",
+                "task_labels": ["LLM/Agent应用"],
+                "target_labels": ["C/C++ OSS"],
+                "relevance_score": 10,
+                "year": 2026,
+            }
+            with db.connect(db_path) as conn:
+                self.assertTrue(db.upsert_paper(conn, paper))
+                row = db.list_papers(conn)[0]
+                db.set_paper_flags(conn, row["id"], {"is_saved": True})
+                result = sync_paper_to_papis(conn, row["id"], config)
+
+            expected = "Agent - Reviewer - Is C - C++ Safe.md"
+            self.assertTrue((Path(result["folder"]) / expected).exists())
+            self.assertIn(
+                f'notes: "{expected}"',
+                (Path(result["folder"]) / "info.yaml").read_text(encoding="utf-8"),
+            )
 
     def test_git_lfs_rule_is_written_when_enabled(self):
         with tempfile.TemporaryDirectory() as temp_dir:

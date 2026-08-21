@@ -12,6 +12,22 @@
     "daily_update_local_time": "08:30",
     "overlap_days": 3
   },
+  "network": {
+    "proxy_url": "",
+    "use_macos_system_proxy": true,
+    "system_proxy_cache_seconds": 60
+  },
+  "sources": {
+    "arxiv": {
+      "timeout_seconds": 12,
+      "max_runtime_seconds": 180
+    },
+    "cspapers": {
+      "timeout_seconds": 10,
+      "max_runtime_seconds": 300,
+      "max_consecutive_errors": 20
+    }
+  },
   "venue_preprints": {
     "enabled": true,
     "source_label": "VenuePreprints",
@@ -157,7 +173,11 @@
     "use_git_lfs": true,
     "write_cli_config": true,
     "folder_template": "{primary_task}/{primary_target}/{year}-{slug}",
-    "download_timeout_seconds": 20
+    "download_timeout_seconds": 20,
+    "download_allow_insecure_tls": false,
+    "git_ssh_proxy": "auto",
+    "git_ssh_proxy_url": "",
+    "git_ssh_command": ""
   },
   "storage": {
     "database_path": "data/papersearch.sqlite"

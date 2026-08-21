@@ -24,7 +24,7 @@ Use this skill when the user asks to find, inspect, open, read, or summarize pap
    ```bash
    rg -i "query|doi|tag" "$LIB/documents" -g info.yaml
    ```
-3. Read the matching `info.yaml` and, if useful, `notes.md`.
+3. Read the matching `info.yaml` and, if useful, the Markdown note named by its `notes` field.
 4. To read PDFs, use the paths in `files:` relative to the paper folder. Prefer `pdftotext` if available; otherwise use a local PDF library if one is already present.
 5. Report exact paper folder paths when handing work to another tool or session.
 

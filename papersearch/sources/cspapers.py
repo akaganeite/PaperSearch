@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import time
 import urllib.parse
 from typing import Any, Dict, Iterable
 
@@ -111,14 +112,18 @@ def _to_paper(item: Dict[str, Any], fetch_abstract: bool) -> Dict[str, Any] | No
     }
 
 
-def _query_variants() -> list[str]:
-    return [
+def _query_variants(interest: Dict[str, Any]) -> list[str]:
+    queries = [
         "large language model agent vulnerability static analysis program repair patch generation root cause",
         "vulnerability detection static analysis patch generation root cause program repair",
         "automated program repair patch correctness patch validation vulnerability",
         "bug localization fault localization root cause analysis vulnerability",
         "software security static analysis vulnerability patch repair",
     ]
+    for query in interest.get("agent_tool_cspapers_queries", []):
+        if isinstance(query, str) and query.strip() and query not in queries:
+            queries.append(query.strip())
+    return queries
 
 
 def fetch(
@@ -127,15 +132,32 @@ def fetch(
     year_to: int,
     pages_per_query: int = 3,
     max_abstract_fetch: int = 80,
+    timeout_seconds: int = 10,
+    max_runtime_seconds: int = 300,
+    max_consecutive_errors: int = 20,
 ) -> list[Dict[str, Any]]:
     venues = interest.get("cspapers_venues", [])
     results: list[Dict[str, Any]] = []
     seen_titles: set[str] = set()
     abstract_fetch_count = 0
+    started_at = time.monotonic()
+    attempted_requests = 0
+    successful_requests = 0
+    consecutive_errors = 0
+    last_error = ""
 
-    for query in _query_variants():
+    def remaining_timeout() -> int:
+        if max_runtime_seconds <= 0:
+            return max(1, timeout_seconds)
+        remaining = max_runtime_seconds - int(time.monotonic() - started_at)
+        if remaining <= 0:
+            raise SourceError(f"csPapers fetch exceeded {max_runtime_seconds}s")
+        return max(1, min(timeout_seconds, remaining))
+
+    for query in _query_variants(interest):
         for venue in venues:
             for page in range(max(1, pages_per_query)):
+                timeout = remaining_timeout()
                 params = {
                     "query": query,
                     "yearFrom": str(year_from),
@@ -147,8 +169,15 @@ def fetch(
                 }
                 url = CSPAPERS_API + "?" + urllib.parse.urlencode(params)
                 try:
-                    payload = http_get_json(url, timeout=30)
-                except SourceError:
+                    attempted_requests += 1
+                    payload = http_get_json(url, timeout=timeout)
+                    successful_requests += 1
+                    consecutive_errors = 0
+                except SourceError as exc:
+                    consecutive_errors += 1
+                    last_error = str(exc)
+                    if consecutive_errors >= max_consecutive_errors:
+                        raise SourceError(f"csPapers stopped after {consecutive_errors} consecutive errors: {last_error}") from exc
                     break
                 items = _flatten_payload(payload)
                 if not items:
@@ -166,4 +195,6 @@ def fetch(
                     if should_fetch_abstract and paper.get("abstract"):
                         abstract_fetch_count += 1
                     results.append(paper)
+    if attempted_requests and successful_requests == 0 and last_error:
+        raise SourceError(f"csPapers API unreachable or invalid: {last_error}")
     return results

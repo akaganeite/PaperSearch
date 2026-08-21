@@ -128,6 +128,10 @@ function papisLabel(paper) {
   return "Papis: not exported";
 }
 
+function canAttachPdf(paper) {
+  return paper.is_saved && ["pending_pdf", "error"].includes(paper.papis_status || "");
+}
+
 function renderPaper(paper) {
   const sourceTags = (paper.sources || []).map((label) => `<span class="tag source">${escapeHtml(label)}</span>`).join("");
   const taskTags = (paper.task_labels || []).map((label) => `<span class="tag">${escapeHtml(label)}</span>`).join("");
@@ -145,7 +149,7 @@ function renderPaper(paper) {
         <button class="paper-action${paper.is_saved ? " active" : ""}" data-action="save">${paper.is_saved ? "Saved" : "Save"}</button>
         <button class="paper-action${paper.is_read ? " active" : ""}" data-action="read">${paper.is_read ? "Read" : "Mark read"}</button>
         ${paper.is_saved ? `<button class="paper-action" data-action="sync-papis">Sync Papis</button>` : ""}
-        ${paper.is_saved ? `<button class="paper-action" data-action="attach-pdf">Attach PDF</button><input class="pdf-input" type="file" accept="application/pdf" hidden />` : ""}
+        ${canAttachPdf(paper) ? `<button class="paper-action" data-action="attach-pdf">Attach PDF</button><input class="pdf-input" type="file" accept="application/pdf" hidden />` : ""}
         <button class="paper-action danger" data-action="delete">Delete</button>
         ${!paper.pdf_url && paper.publisher_pdf_url ? `<a class="paper-action access-link" href="${escapeHtml(paper.publisher_pdf_url)}" target="_blank" rel="noreferrer">Access PDF</a>` : ""}
         ${!paper.pdf_url && paper.publisher_url ? `<a class="paper-action access-link" href="${escapeHtml(paper.publisher_url)}" target="_blank" rel="noreferrer">Access page</a>` : ""}
@@ -215,10 +219,14 @@ function renderSummary(summary) {
   const sourceLines = Object.entries(summary.sources || {})
     .map(([source, item]) => `${source}: fetched ${item.fetched || 0}, kept ${item.kept || 0}, new ${item.new || 0}${item.error ? `, error ${item.error}` : ""}`)
     .join("\n");
+  const topError = summary.error ? `Update error: ${summary.error}\n` : "";
   const llm = summary.llm_summaries
     ? `\nDeepSeek summaries: checked ${summary.llm_summaries.checked || 0}, summarized ${summary.llm_summaries.summarized || 0}, errors ${summary.llm_summaries.errors || 0}`
     : "";
-  $("#lastSummary").innerHTML = `<strong>Last update</strong><br><pre>${escapeHtml((sourceLines || "No source activity.") + llm)}</pre>`;
+  const prefilter = summary.llm_prefilter
+    ? `\nLLM prefilter: candidates ${summary.llm_prefilter.candidates || 0}, reviewed ${summary.llm_prefilter.reviewed || 0}, cached ${summary.llm_prefilter.cached || 0}, accepted ${summary.llm_prefilter.accepted || 0}, rejected ${summary.llm_prefilter.rejected || 0}, pending ${summary.llm_prefilter.pending || 0}, errors ${summary.llm_prefilter.errors || 0}`
+    : "";
+  $("#lastSummary").innerHTML = `<strong>Last update</strong><br><pre>${escapeHtml(topError + (sourceLines || "No source activity.") + prefilter + llm)}</pre>`;
 }
 
 function renderSummaryStatus(status) {
