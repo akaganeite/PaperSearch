@@ -128,6 +128,31 @@ def init_db(db_path: str | Path) -> None:
                 new_count INTEGER NOT NULL DEFAULT 0,
                 error TEXT NOT NULL DEFAULT ''
             );
+
+            CREATE TABLE IF NOT EXISTS llm_prefilter_reviews (
+                cache_key TEXT PRIMARY KEY,
+                content_hash TEXT NOT NULL,
+                interest_id TEXT NOT NULL,
+                profile_hash TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                model TEXT NOT NULL,
+                prompt_version TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                priority REAL NOT NULL DEFAULT 0,
+                decision_json TEXT NOT NULL DEFAULT '{}',
+                candidate_json TEXT NOT NULL DEFAULT '{}',
+                attempts INTEGER NOT NULL DEFAULT 0,
+                next_retry_at TEXT NOT NULL DEFAULT '',
+                last_error TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                reviewed_at TEXT NOT NULL DEFAULT ''
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_llm_prefilter_status
+                ON llm_prefilter_reviews(status, next_retry_at, priority DESC);
+            CREATE INDEX IF NOT EXISTS idx_llm_prefilter_interest
+                ON llm_prefilter_reviews(interest_id, status);
             """
         )
         _ensure_column(conn, "papers", "doi", "TEXT NOT NULL DEFAULT ''")
@@ -204,6 +229,13 @@ def _merge_unique(*items: Iterable[str]) -> list[str]:
                 seen.add(key)
                 merged.append(str(item))
     return merged
+
+
+def _prefilter_review_from_row(row: sqlite3.Row) -> Dict[str, Any]:
+    item = dict(row)
+    item["decision"] = _json_loads(item.pop("decision_json"), {})
+    item["candidate"] = _json_loads(item.pop("candidate_json"), {})
+    return item
 
 
 def upsert_paper(conn: sqlite3.Connection, paper: Dict[str, Any]) -> bool:
@@ -732,6 +764,16 @@ def get_paper(conn: sqlite3.Connection, paper_id: int) -> Optional[Dict[str, Any
     return _paper_from_row(row) if row else None
 
 
+def get_paper_by_title_norm(conn: sqlite3.Connection, title_norm: str) -> Optional[Dict[str, Any]]:
+    row = conn.execute("SELECT * FROM papers WHERE title_norm = ?", (title_norm,)).fetchone()
+    return _paper_from_row(row) if row else None
+
+
+def delete_paper_physical(conn: sqlite3.Connection, paper_id: int) -> bool:
+    cursor = conn.execute("DELETE FROM papers WHERE id = ?", (paper_id,))
+    return bool(cursor.rowcount)
+
+
 def delete_paper(conn: sqlite3.Connection, paper_id: int) -> Optional[Dict[str, Any]]:
     row = conn.execute("SELECT * FROM papers WHERE id = ?", (paper_id,)).fetchone()
     if row is None:
@@ -790,6 +832,137 @@ def delete_paper(conn: sqlite3.Connection, paper_id: int) -> Optional[Dict[str, 
     conn.execute("DELETE FROM papers WHERE id = ?", (paper_id,))
     deleted = conn.execute("SELECT * FROM deleted_papers WHERE title_norm = ?", (paper["title_norm"],)).fetchone()
     return _deleted_paper_from_row(deleted) if deleted else None
+
+
+def upsert_llm_prefilter_candidate(conn: sqlite3.Connection, review: Dict[str, Any]) -> Dict[str, Any]:
+    now = utc_now()
+    conn.execute(
+        """
+        INSERT INTO llm_prefilter_reviews (
+            cache_key, content_hash, interest_id, profile_hash, provider, model,
+            prompt_version, status, priority, decision_json, candidate_json,
+            attempts, next_retry_at, last_error, created_at, updated_at, reviewed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, '{}', ?, 0, '', '', ?, ?, '')
+        ON CONFLICT(cache_key) DO UPDATE SET
+            priority = MAX(priority, excluded.priority),
+            candidate_json = CASE
+                WHEN llm_prefilter_reviews.status = 'pending' THEN excluded.candidate_json
+                ELSE llm_prefilter_reviews.candidate_json
+            END,
+            updated_at = excluded.updated_at
+        """,
+        (
+            review["cache_key"],
+            review["content_hash"],
+            review["interest_id"],
+            review["profile_hash"],
+            review["provider"],
+            review["model"],
+            review["prompt_version"],
+            float(review.get("priority", 0) or 0),
+            _json_dumps(review.get("candidate", {})),
+            now,
+            now,
+        ),
+    )
+    row = conn.execute("SELECT * FROM llm_prefilter_reviews WHERE cache_key = ?", (review["cache_key"],)).fetchone()
+    assert row is not None
+    return _prefilter_review_from_row(row)
+
+
+def get_llm_prefilter_review(conn: sqlite3.Connection, cache_key: str) -> Optional[Dict[str, Any]]:
+    row = conn.execute("SELECT * FROM llm_prefilter_reviews WHERE cache_key = ?", (cache_key,)).fetchone()
+    return _prefilter_review_from_row(row) if row else None
+
+
+def list_due_llm_prefilter_reviews(
+    conn: sqlite3.Connection,
+    limit: int,
+    interest_id: str = "",
+) -> list[Dict[str, Any]]:
+    clauses = ["status = 'pending'", "(next_retry_at = '' OR next_retry_at <= ?)"]
+    params: list[Any] = [utc_now()]
+    if interest_id:
+        clauses.append("interest_id = ?")
+        params.append(interest_id)
+    params.append(max(1, min(limit, 1000)))
+    rows = conn.execute(
+        f"""
+        SELECT * FROM llm_prefilter_reviews
+        WHERE {' AND '.join(clauses)}
+        ORDER BY priority DESC, created_at ASC
+        LIMIT ?
+        """,
+        params,
+    ).fetchall()
+    return [_prefilter_review_from_row(row) for row in rows]
+
+
+def complete_llm_prefilter_review(
+    conn: sqlite3.Connection,
+    cache_key: str,
+    decision: Dict[str, Any],
+    *,
+    accepted: bool,
+    api_attempts: int,
+) -> None:
+    now = utc_now()
+    conn.execute(
+        """
+        UPDATE llm_prefilter_reviews
+        SET status = ?, decision_json = ?, candidate_json = '{}',
+            attempts = attempts + ?, next_retry_at = '', last_error = '',
+            updated_at = ?, reviewed_at = ?
+        WHERE cache_key = ?
+        """,
+        ("accepted" if accepted else "rejected", _json_dumps(decision), api_attempts, now, now, cache_key),
+    )
+
+
+def fail_llm_prefilter_review(
+    conn: sqlite3.Connection,
+    cache_key: str,
+    error: str,
+    *,
+    api_attempts: int,
+    next_retry_at: str,
+) -> None:
+    conn.execute(
+        """
+        UPDATE llm_prefilter_reviews
+        SET status = 'pending', attempts = attempts + ?, next_retry_at = ?,
+            last_error = ?, updated_at = ?
+        WHERE cache_key = ?
+        """,
+        (api_attempts, next_retry_at, error[:1000], utc_now(), cache_key),
+    )
+
+
+def get_llm_prefilter_status(conn: sqlite3.Connection) -> Dict[str, Any]:
+    counts = {
+        row["status"]: row["count"]
+        for row in conn.execute(
+            "SELECT status, COUNT(*) AS count FROM llm_prefilter_reviews GROUP BY status"
+        ).fetchall()
+    }
+    pending_with_errors = conn.execute(
+        "SELECT COUNT(*) AS count FROM llm_prefilter_reviews WHERE status = 'pending' AND last_error != ''"
+    ).fetchone()["count"]
+    due = conn.execute(
+        """
+        SELECT COUNT(*) AS count FROM llm_prefilter_reviews
+        WHERE status = 'pending' AND (next_retry_at = '' OR next_retry_at <= ?)
+        """,
+        (utc_now(),),
+    ).fetchone()["count"]
+    return {
+        "accepted": int(counts.get("accepted", 0)),
+        "rejected": int(counts.get("rejected", 0)),
+        "pending": int(counts.get("pending", 0)),
+        "due": int(due),
+        "errors": int(pending_with_errors),
+        "total": int(sum(counts.values())),
+    }
 
 
 def get_state(conn: sqlite3.Connection, key: str) -> str:
@@ -875,6 +1048,7 @@ def get_stats(conn: sqlite3.Connection) -> Dict[str, Any]:
         "publisher_links": sum(1 for paper in papers if paper.get("publisher_url") and not paper.get("pdf_url")),
         "publisher_pdf_links": sum(1 for paper in papers if paper.get("publisher_pdf_url") and not paper.get("pdf_url")),
         "deleted": conn.execute("SELECT COUNT(*) AS count FROM deleted_papers").fetchone()["count"],
+        "llm_prefilter": get_llm_prefilter_status(conn),
         "sources": {},
         "task_labels": {},
         "target_labels": {},

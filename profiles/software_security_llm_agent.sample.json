@@ -11,6 +11,7 @@
       "id": "software_security_llm_agent_applications",
       "name": "LLM/Agent Applications in Software Security",
       "description": "Papers about applying LLMs, agents, or AI-assisted systems to software security tasks, including vulnerability discovery, automated repair, root cause analysis, static analysis, patch generation, patch correctness, bug localization, and vulnerability localization. The focus is on software security applications, not on studying, training, or improving LLMs themselves.",
+      "min_relevance_score": 50,
       "priority_topics": [
         "vulnerability discovery",
         "vulnerability detection",
@@ -52,6 +53,39 @@
         "LLM-based",
         "LLM-assisted"
       ],
+      "agent_tool_terms": [
+        "OpenAI Codex",
+        "Codex",
+        "Claude Code",
+        "Cursor",
+        "Devin",
+        "GitHub Copilot",
+        "Copilot",
+        "SWE-agent",
+        "OpenHands",
+        "Aider",
+        "Cline",
+        "Roo Code",
+        "AI coding assistant",
+        "coding agent"
+      ],
+      "agent_tool_task_label": "Agent工具评估",
+      "agent_tool_score_boost": 18,
+      "agent_tool_arxiv_queries": [
+        "all:\"AI agents\" AND all:cybersecurity",
+        "all:\"AI agents\" AND all:vulnerability",
+        "all:Codex AND all:vulnerability",
+        "all:\"Claude Code\" AND all:vulnerability",
+        "all:\"coding agent\" AND all:vulnerability",
+        "all:\"AI coding assistant\" AND all:vulnerability",
+        "all:Codex AND all:\"program repair\"",
+        "all:\"Claude Code\" AND all:\"static analysis\""
+      ],
+      "agent_tool_cspapers_queries": [
+        "codex claude code coding agent vulnerability static analysis program repair patch",
+        "openai codex claude code software security vulnerability repair",
+        "coding agent vulnerability detection program repair static analysis"
+      ],
       "security_software_terms": [
         "vulnerability",
         "vulnerabilities",
@@ -80,6 +114,13 @@
         "libFuzzer",
         "seed selection",
         "corpus minimization",
+        "smart contract",
+        "smart contracts",
+        "智能合约",
+        "solidity",
+        "ethereum",
+        "reentrancy",
+        "blockchain contract",
         "LLM pretraining",
         "pre-training large language models",
         "model architecture",
@@ -362,6 +403,7 @@
       "fallback_target_label": "Unknown/Unclear",
       "reason_templates": {
         "llm_topic": "LLM/Agent 软件安全应用命中",
+        "agent_tool_topic": "Agent 工具评估命中：{tools}",
         "top_venue": "顶级 venue 例外通道命中：{venue}",
         "topic": "主题：{terms}",
         "tasks": "任务：{labels}",
@@ -370,6 +412,7 @@
         "reject_exclude": "硬过滤：{terms}",
         "reject_llm_no_topic": "LLM/Agent 相关但不是目标应用方向",
         "reject_top_no_traditional": "顶会传统方法未命中严格关键词",
+        "reject_low_score": "推荐分低于入库阈值：{score} < {threshold}",
         "reject_no_match": "未命中目标应用方向或顶会传统方法例外"
       }
     }

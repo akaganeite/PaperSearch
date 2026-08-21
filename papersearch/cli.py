@@ -5,6 +5,7 @@ import json
 
 from . import db
 from .config import config_check, load_config, redact_config
+from .llm_prefilter import backfill_existing, prefilter_status
 from .llm_summary import summarize_saved_papers
 from .papis_integration import attach_pdf_to_paper, init_papis, papis_status, sync_saved_papers
 from .pdf_resolver import resolve_missing_pdfs
@@ -35,6 +36,12 @@ def main() -> None:
     summary_parser = subparsers.add_parser("summarize-saved", help="Generate DeepSeek summaries for saved papers without existing summaries.")
     summary_parser.add_argument("--limit", type=int, default=None)
 
+    prefilter_backfill_parser = subparsers.add_parser(
+        "llm-prefilter-backfill",
+        help="Review existing papers with the configured LLM prefilter.",
+    )
+    prefilter_backfill_parser.add_argument("--limit", type=int, default=None)
+
     init_papis_parser = subparsers.add_parser("init-papis", help="Initialize the configured Papis library.")
     init_papis_parser.add_argument("--install-tools", action="store_true", help="Install papis/git-lfs when possible.")
     init_papis_parser.add_argument("--remote-url", default="", help="Optional Papis library Git remote URL.")
@@ -56,6 +63,7 @@ def main() -> None:
     subparsers.add_parser("show-config", help="Print the resolved config.")
     subparsers.add_parser("config-check", help="Validate the resolved config without exposing secrets.")
     subparsers.add_parser("papis-status", help="Show Papis integration status.")
+    subparsers.add_parser("llm-prefilter-status", help="Show LLM prefilter queue and cache status.")
 
     args = parser.parse_args()
     if args.command == "update":
@@ -83,6 +91,9 @@ def main() -> None:
     if args.command == "summarize-saved":
         print(json.dumps(summarize_saved_papers(args.config, limit=args.limit), ensure_ascii=False, indent=2))
         return
+    if args.command == "llm-prefilter-backfill":
+        print(json.dumps(backfill_existing(args.config, limit=args.limit), ensure_ascii=False, indent=2))
+        return
     if args.command == "init-papis":
         print(json.dumps(init_papis(args.config, install_tools=args.install_tools, remote_url=args.remote_url), ensure_ascii=False, indent=2))
         return
@@ -108,6 +119,9 @@ def main() -> None:
         return
     if args.command == "papis-status":
         print(json.dumps(papis_status(args.config), ensure_ascii=False, indent=2))
+        return
+    if args.command == "llm-prefilter-status":
+        print(json.dumps(prefilter_status(args.config), ensure_ascii=False, indent=2))
         return
 
     parser.print_help()

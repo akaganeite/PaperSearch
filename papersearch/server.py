@@ -18,6 +18,7 @@ from urllib.parse import parse_qs, urlparse
 
 from . import db
 from .config import ROOT_DIR, load_config, redact_config
+from .llm_prefilter import prefilter_status
 from .llm_summary import summarize_saved_papers
 from .papis_integration import attach_pdf_to_paper, papis_status, sync_paper_to_papis
 from .pipeline import run_update
@@ -149,6 +150,9 @@ class PaperSearchHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/papis/status":
             self._send_json(papis_status(self.state.config_path))
+            return
+        if path == "/api/llm-prefilter/status":
+            self._send_json(prefilter_status(self.state.config_path))
             return
 
         with db.connect(self.state.db_path) as conn:

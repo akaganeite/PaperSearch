@@ -6,6 +6,9 @@
   "llm_summary": {
     "api_key_env": "DEEPSEEK_API_KEY"
   },
+  "llm_prefilter": {
+    "enabled": false
+  },
   "papis": {
     "enabled": true,
     "library_path": "~/Library/Application Support/PaperSearch/papis-library",

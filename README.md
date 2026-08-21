@@ -16,6 +16,7 @@ Edit `configs/local.json`:
 
 - Set `pdf_resolver.unpaywall_email` to your email.
 - Keep `llm_summary.api_key_env` as an environment variable name, for example `DEEPSEEK_API_KEY`.
+- Set `llm_prefilter.enabled` to `true` to use the same API credentials for semantic admission scoring.
 - Set `profile_path` to a profile JSON. The included sample is `profiles/software_security_llm_agent.sample.json`.
 
 Set your LLM API key in the environment:
@@ -72,6 +73,8 @@ python3 -m papersearch update --bootstrap
 python3 -m papersearch update
 python3 -m papersearch resolve-pdfs --limit 50
 python3 -m papersearch summarize-saved --limit 10
+python3 -m papersearch llm-prefilter-status
+python3 -m papersearch llm-prefilter-backfill --limit 100
 python3 -m papersearch init-papis --install-tools
 python3 -m papersearch sync-papis --saved-only
 python3 -m papersearch attach-pdf <paper-id> /path/to/paper.pdf

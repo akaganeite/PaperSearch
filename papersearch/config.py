@@ -156,6 +156,23 @@ def config_check(config_path: str | None = None) -> Dict[str, Any]:
     if config.get("llm_summary", {}).get("api_key"):
         warnings.append("llm_summary.api_key is set; do not commit local configs containing direct keys.")
 
+    prefilter = config.get("llm_prefilter", {})
+    if prefilter.get("enabled", False):
+        threshold = float(prefilter.get("threshold", 50) or 50)
+        if not 0 <= threshold <= 100:
+            errors.append("llm_prefilter.threshold must be between 0 and 100.")
+        if int(prefilter.get("max_per_update", 100) or 0) <= 0:
+            errors.append("llm_prefilter.max_per_update must be positive.")
+        if int(prefilter.get("max_workers", 4) or 0) <= 0:
+            errors.append("llm_prefilter.max_workers must be positive.")
+        prefilter_key_env = str(prefilter.get("api_key_env", "") or "")
+        if prefilter_key_env.startswith("sk" + "-") or (
+            len(prefilter_key_env) >= 32 and not re.fullmatch(r"[A-Z0-9_]+", prefilter_key_env)
+        ):
+            warnings.append("llm_prefilter.api_key_env looks like a direct secret; use an environment variable name instead.")
+        if prefilter.get("api_key"):
+            warnings.append("llm_prefilter.api_key is set; do not commit local configs containing direct keys.")
+
     return {
         "ok": not errors,
         "errors": errors,

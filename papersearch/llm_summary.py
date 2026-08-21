@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 import json
-import os
 import re
-import urllib.error
-import urllib.request
 from typing import Any, Dict
 
 from . import db
 from .config import load_config
-from .sources.common import USER_AGENT
+from .llm_client import chat_json
 
 
 DEFAULT_SYSTEM_PROMPT = """You are a paper-summary assistant.
@@ -98,20 +95,6 @@ def _build_user_prompt(paper: Dict[str, Any], config: Dict[str, Any]) -> str:
     )
 
 
-def _extract_json(text: str) -> Dict[str, Any]:
-    text = text.strip()
-    try:
-        parsed = json.loads(text)
-        return parsed if isinstance(parsed, dict) else {}
-    except json.JSONDecodeError:
-        pass
-    match = re.search(r"\{.*\}", text, flags=re.S)
-    if not match:
-        return {}
-    parsed = json.loads(match.group(0))
-    return parsed if isinstance(parsed, dict) else {}
-
-
 def _normalize_summary(payload: Dict[str, Any], fallback_quality: str) -> Dict[str, Any]:
     priority = str(payload.get("read_priority", "medium") or "medium").lower()
     if priority not in {"high", "medium", "low"}:
@@ -145,62 +128,13 @@ def _normalize_summary(payload: Dict[str, Any], fallback_quality: str) -> Dict[s
     }
 
 
-def _looks_like_direct_key(value: str) -> bool:
-    return value.startswith("sk" + "-") or (len(value) >= 32 and not re.fullmatch(r"[A-Z0-9_]+", value))
-
-
-def _resolve_api_key(cfg: Dict[str, Any]) -> str:
-    direct_key = str(cfg.get("api_key", "") or "").strip()
-    if direct_key:
-        return direct_key
-    env_name = str(cfg.get("api_key_env", "DEEPSEEK_API_KEY") or "DEEPSEEK_API_KEY").strip()
-    env_value = os.environ.get(env_name, "")
-    if env_value:
-        return env_value
-    if _looks_like_direct_key(env_name):
-        return env_name
-    return ""
-
-
 def _deepseek_chat_completion(paper: Dict[str, Any], config: Dict[str, Any]) -> tuple[Dict[str, Any], str]:
-    cfg = config.get("llm_summary", {})
-    api_key = _resolve_api_key(cfg)
-    if not api_key:
-        raise RuntimeError("Missing DeepSeek API key environment variable.")
-
-    model = str(cfg.get("model", "deepseek-v4-flash") or "deepseek-v4-flash")
-    base_url = str(cfg.get("base_url", "https://api.deepseek.com") or "https://api.deepseek.com").rstrip("/")
-    endpoint = base_url + "/chat/completions"
-    body = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": _system_prompt(config)},
-            {"role": "user", "content": _build_user_prompt(paper, config)},
-        ],
-        "temperature": float(cfg.get("temperature", 0.2) or 0.2),
-        "max_tokens": int(cfg.get("max_tokens", 900) or 900),
-        "response_format": {"type": "json_object"},
-    }
-    body["thinking"] = {"type": "enabled" if cfg.get("thinking", False) else "disabled"}
-    request = urllib.request.Request(
-        endpoint,
-        data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "User-Agent": USER_AGENT,
-        },
-        method="POST",
+    parsed, model = chat_json(
+        config,
+        "llm_summary",
+        _system_prompt(config),
+        _build_user_prompt(paper, config),
     )
-    timeout = int(cfg.get("timeout_seconds", 60) or 60)
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")[:500]
-        raise RuntimeError(f"DeepSeek HTTP {exc.code}: {detail}") from exc
-    content = (((payload.get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
-    parsed = _extract_json(content)
     summary = _normalize_summary(parsed, _summary_quality(paper))
     if not summary["summary_zh"]:
         raise RuntimeError("DeepSeek returned empty summary.")
@@ -230,9 +164,11 @@ def summarize_saved_papers(config_path: str | None = None, limit: int | None = N
             try:
                 llm_summary, model = _deepseek_chat_completion(paper, config)
                 db.update_llm_summary(conn, int(paper["id"]), llm_summary, model)
+                conn.commit()
                 summary["summarized"] += 1
             except Exception as exc:  # noqa: BLE001 - one bad/API-failed paper must not block the batch.
                 db.update_llm_summary_error(conn, int(paper["id"]), str(exc))
+                conn.commit()
                 summary["errors"] += 1
                 if len(summary["error_messages"]) < 5:
                     summary["error_messages"].append({"paper_id": paper["id"], "error": str(exc)})

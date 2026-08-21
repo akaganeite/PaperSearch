@@ -42,8 +42,8 @@ def _term_query(prefix: str, terms: list[str]) -> str:
     return "(" + " OR ".join(parts) + ")"
 
 
-def build_search_queries(_interest: Dict[str, Any]) -> list[str]:
-    return [
+def build_search_queries(interest: Dict[str, Any]) -> list[str]:
+    queries = [
         'all:"large language model" AND all:vulnerability',
         'all:LLM AND all:"static analysis"',
         'all:LLM AND all:"program repair"',
@@ -52,6 +52,10 @@ def build_search_queries(_interest: Dict[str, Any]) -> list[str]:
         'all:LLM AND all:"root cause"',
         'all:LLM AND all:"fault localization"',
     ]
+    for query in interest.get("agent_tool_arxiv_queries", []):
+        if isinstance(query, str) and query.strip() and query not in queries:
+            queries.append(query.strip())
+    return queries
 
 
 def _allowed_category(categories: list[str], interest: Dict[str, Any]) -> bool:

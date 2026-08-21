@@ -148,6 +148,18 @@
     "request_delay_seconds": 0.5,
     "unpaywall_email": "you@example.com"
   },
+  "llm_prefilter": {
+    "enabled": false,
+    "threshold": 50,
+    "max_per_update": 100,
+    "max_workers": 4,
+    "timeout_seconds": 45,
+    "max_retries": 2,
+    "retry_delay_seconds": 1,
+    "temperature": 0,
+    "max_tokens": 700,
+    "prompt_version": "3"
+  },
   "llm_summary": {
     "enabled": true,
     "provider": "deepseek",

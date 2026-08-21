@@ -35,6 +35,70 @@ def traditional_topic_matches(text: str, interest: Dict[str, Any]) -> list[str]:
     return matched_terms(text, interest.get("traditional_topic_terms", []))
 
 
+def prefilter_candidate(paper: Dict[str, Any], interest: Dict[str, Any]) -> tuple[bool, Dict[str, Any], str]:
+    text = _combined_text(paper)
+    exclude_matches = matched_terms(text, interest.get("exclude_keywords", []))
+    if exclude_matches:
+        reason = _template(interest, "reject_exclude", "Excluded by: {terms}", terms=", ".join(exclude_matches[:5]))
+        return False, {"exclude_matches": exclude_matches}, reason
+
+    llm_matches = matched_terms(text, interest.get("llm_agent_terms", []))
+    agent_tool_matches = matched_terms(text, interest.get("agent_tool_terms", []))
+    topic_matches = matched_terms(text, interest.get("security_software_terms", []))
+    priority_matches = matched_terms(text, interest.get("priority_topics", []))
+    traditional_matches = traditional_topic_matches(text, interest)
+    top_venue_match = is_top_venue(str(paper.get("venue", "") or ""), interest)
+
+    broad_matches = _merge_terms(
+        llm_matches,
+        agent_tool_matches,
+        topic_matches,
+        priority_matches,
+        traditional_matches,
+    )
+    if not broad_matches:
+        return False, {}, _template(interest, "reject_no_match", "No broad interest hint matched")
+
+    merged_topic_matches = _merge_terms(topic_matches, priority_matches)
+    merged_llm_matches = _merge_terms(llm_matches, agent_tool_matches)
+    has_llm_agent = bool(merged_llm_matches)
+    has_traditional = bool(traditional_matches)
+    task_labels = classify_task_labels(text, has_llm_agent, top_venue_match, has_traditional, interest)
+    target_labels = classify_target_labels(text, interest)
+    rule_score = score_paper(
+        paper,
+        text,
+        merged_llm_matches,
+        agent_tool_matches,
+        merged_topic_matches,
+        top_venue_match,
+        task_labels,
+        target_labels,
+        interest,
+    )
+    agent_tool_priority = 10000.0 if agent_tool_matches and merged_topic_matches else 0.0
+    priority = agent_tool_priority + rule_score * 100.0 + _recency_score(str(paper.get("published_at", "") or ""))
+    return True, {
+        "llm_matches": llm_matches,
+        "agent_tool_matches": agent_tool_matches,
+        "topic_matches": topic_matches,
+        "priority_matches": priority_matches,
+        "traditional_matches": traditional_matches,
+        "top_venue_match": top_venue_match,
+        "rule_score": rule_score,
+        "priority": round(priority, 2),
+    }, ""
+
+
+def _merge_terms(*groups: list[str]) -> list[str]:
+    merged: list[str] = []
+    for group in groups:
+        for term in group:
+            if term not in merged:
+                merged.append(term)
+    return merged
+
+
 def _rule_matches(
     rule: Dict[str, Any],
     text: str,
@@ -103,6 +167,7 @@ def score_paper(
     paper: Dict[str, Any],
     text: str,
     llm_matches: list[str],
+    agent_tool_matches: list[str],
     topic_matches: list[str],
     top_venue_match: bool,
     task_labels: list[str],
@@ -116,6 +181,8 @@ def score_paper(
         score += 36.0
     if top_venue_match and topic_matches:
         score += 28.0
+    if agent_tool_matches and topic_matches:
+        score += float(interest.get("agent_tool_score_boost", 18.0) or 0)
     score += min(18.0, len(topic_matches) * 3.0)
     score += min(10.0, len(llm_matches) * 2.0)
     score += max(0, len([label for label in task_labels if label != fallback_task]) - 1) * 2.0
@@ -136,6 +203,7 @@ def _template(interest: Dict[str, Any], key: str, default: str, **values: str) -
 
 def recommendation_reason(
     llm_matches: list[str],
+    agent_tool_matches: list[str],
     topic_matches: list[str],
     top_venue_match: bool,
     venue: str,
@@ -146,6 +214,8 @@ def recommendation_reason(
     pieces: list[str] = []
     fallback_task = str(interest.get("fallback_task_label", "Other") or "Other")
     fallback_target = str(interest.get("fallback_target_label", "Unknown/Unclear") or "Unknown/Unclear")
+    if agent_tool_matches and topic_matches:
+        pieces.append(_template(interest, "agent_tool_topic", "Matched coding-agent tool: {tools}", tools=", ".join(agent_tool_matches[:3])))
     if llm_matches and topic_matches:
         pieces.append(_template(interest, "llm_topic", "Matched LLM/Agent application topic"))
     if top_venue_match:
@@ -168,16 +238,15 @@ def enrich_and_filter(paper: Dict[str, Any], interest: Dict[str, Any]) -> tuple[
         return False, paper, reason
 
     llm_matches = matched_terms(text, interest.get("llm_agent_terms", []))
+    agent_tool_matches = matched_terms(text, interest.get("agent_tool_terms", []))
     topic_matches = matched_terms(text, interest.get("security_software_terms", []))
     priority_matches = matched_terms(text, interest.get("priority_topics", []))
-    merged_topic_matches = []
-    for term in topic_matches + priority_matches:
-        if term not in merged_topic_matches:
-            merged_topic_matches.append(term)
+    merged_topic_matches = _merge_terms(topic_matches, priority_matches)
+    merged_llm_matches = _merge_terms(llm_matches, agent_tool_matches)
 
     venue = str(paper.get("venue", "") or "")
     top_venue_match = is_top_venue(venue, interest)
-    has_llm_agent = bool(llm_matches)
+    has_llm_agent = bool(merged_llm_matches)
     has_topic = bool(merged_topic_matches)
 
     traditional_matches = traditional_topic_matches(text, interest)
@@ -192,9 +261,41 @@ def enrich_and_filter(paper: Dict[str, Any], interest: Dict[str, Any]) -> tuple[
         return False, paper, _template(interest, "reject_no_match", "No interest rule matched")
 
     task_labels = classify_task_labels(text, has_llm_agent, top_venue_match, has_traditional_topic, interest)
+    if agent_tool_matches and has_topic:
+        agent_tool_label = str(interest.get("agent_tool_task_label", "Agent工具评估") or "")
+        if agent_tool_label and agent_tool_label not in task_labels:
+            task_labels.append(agent_tool_label)
     target_labels = classify_target_labels(text, interest)
-    score = score_paper(paper, text, llm_matches, merged_topic_matches, top_venue_match, task_labels, target_labels, interest)
-    reason = recommendation_reason(llm_matches, merged_topic_matches, top_venue_match, venue, task_labels, target_labels, interest)
+    score = score_paper(
+        paper,
+        text,
+        merged_llm_matches,
+        agent_tool_matches,
+        merged_topic_matches,
+        top_venue_match,
+        task_labels,
+        target_labels,
+        interest,
+    )
+    min_score = float(interest.get("min_relevance_score", 0) or 0)
+    if score < min_score:
+        return False, paper, _template(
+            interest,
+            "reject_low_score",
+            "Relevance score below threshold: {score} < {threshold}",
+            score=f"{score:.1f}",
+            threshold=f"{min_score:.1f}",
+        )
+    reason = recommendation_reason(
+        llm_matches,
+        agent_tool_matches,
+        merged_topic_matches,
+        top_venue_match,
+        venue,
+        task_labels,
+        target_labels,
+        interest,
+    )
 
     enriched = dict(paper)
     enriched["task_labels"] = task_labels
